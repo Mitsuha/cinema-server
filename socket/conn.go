@@ -13,3 +13,8 @@ type Connect struct {
 func (c *Connect) Emit(message *Message) error {
 	return c.Conn.WriteJSON(message)
 }
+
+func (c *Connect) Close() error {
+	c.Online = false
+	return c.Conn.Close()
+}

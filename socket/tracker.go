@@ -15,7 +15,7 @@ func (t *Tracker) Track(id string) chan *Message {
 	return t.events[id]
 }
 
-func (t *Tracker) Listen(conn *Connect, message *Message) {
+func (t *Tracker) Listen(message *Message) {
 	if ch, ok := t.events[message.ID]; ok {
 		ch <- message
 		delete(t.events, message.ID)

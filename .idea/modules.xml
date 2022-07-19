@@ -2,7 +2,7 @@
 <project version="4">
   <component name="ProjectModuleManager">
     <modules>
-      <module fileurl="file://$PROJECT_DIR$/.idea/hourglass-socket.iml" filepath="$PROJECT_DIR$/.idea/hourglass-socket.iml" />
+      <module fileurl="file://$PROJECT_DIR$/.idea/watcher-server.iml" filepath="$PROJECT_DIR$/.idea/watcher-server.iml" />
     </modules>
   </component>
 </project>

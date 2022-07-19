@@ -6,7 +6,6 @@ type User struct {
 	ID     string          `json:"id"`
 	Avatar string          `json:"avatar"`
 	Name   string          `json:"name"`
-	Phone  string          `json:"phone"`
 	Room   *Room           `json:"-"`
 	Conn   *socket.Connect `json:"-"`
 }
