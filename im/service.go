@@ -3,6 +3,7 @@ package im
 import (
 	"encoding/json"
 	"hourglass-socket/socket"
+	"log"
 	"sync"
 )
 
@@ -34,48 +35,65 @@ func (i *Im) RegisterEvent() {
 	i.ws.Listen("broadcast", i.broadcast)
 }
 
-func (i *Im) registerUser(conn *socket.Connect, message *socket.Message) {
+func (i *Im) registerUser(message *socket.Message) {
 	user := User{}
 
 	if err := json.Unmarshal(message.Origin, &user); err != nil {
+		log.Fatalln(err)
 		return
 	}
 
-	if u, ok := i.users[user.Phone]; ok {
-		u.association(conn)
+	if u, ok := i.users[user.ID]; ok {
+		u.association(message.Conn)
 	} else {
-		user.association(conn)
-		i.users[user.Phone] = &user
+		user.association(message.Conn)
+		i.users[user.ID] = &user
 	}
 }
 
-func (i *Im) createRoom(conn *socket.Connect, _ *socket.Message) {
-	user, ok := conn.User.(*User)
-	if !ok {
-		return
-	}
-	if user == nil {
-		_ = i.Reply(conn, &Response{Message: "未登录，试试重启？"})
+func (i *Im) createRoom(msg *socket.Message) {
+	user, ok := msg.User().(*User)
+
+	if user == nil || !ok {
+		err := i.Reply(true, msg, &Response{Message: "未登录，试试重启？"})
+		if err != nil {
+			log.Fatalln(err)
+		}
 		return
 	}
 
-	if user.Room != nil {
-		_ = i.Reply(conn, &Response{Message: "你已经在一个房间里，请退出后再试"})
-		return
-	}
+	//if user.Room != nil {
+	//	err := i.Reply(msg, &Response{Message: "你已经在一个房间里，请退出后再试"})
+	//	if err != nil {
+	//		log.Fatalln(err)
+	//	}
+	//	return
+	//}
 
+	room := i.NewRoom(user)
+
+	i.rooms[i.incrementRoomID], user.Room = room, room
+
+	err := i.Reply(true, msg, room)
+	if err != nil {
+		log.Fatalln(err)
+	}
+}
+
+func (i *Im) NewRoom(master *User) *Room {
 	i.roomCreating.Lock()
-	room := NewRoom(i.incrementRoomID, user)
-	i.rooms[i.incrementRoomID] = room
-	user.Room = room
-	i.incrementRoomID++
-	i.roomCreating.Unlock()
+	defer func() {
+		i.incrementRoomID++
+		i.roomCreating.Unlock()
+	}()
 
-	_ = i.Reply(conn, room)
+	user := master.RemovePrivacy()
+
+	return &Room{ID: i.incrementRoomID, Master: user, Users: []*User{user}}
 }
 
-func (i *Im) leaveRoom(conn *socket.Connect, _ *socket.Message) {
-	user, ok := conn.User.(*User)
+func (i *Im) leaveRoom(msg *socket.Message) {
+	user, ok := msg.User().(*User)
 	if !ok {
 		return
 	}
@@ -95,26 +113,26 @@ func (i *Im) leaveRoom(conn *socket.Connect, _ *socket.Message) {
 	user.Room = nil
 }
 
-func (i *Im) broadcast(conn *socket.Connect, message *socket.Message) {
-	user, ok := conn.User.(*User)
+func (i *Im) broadcast(msg *socket.Message) {
+	user, ok := msg.User().(*User)
 	if !ok {
 		return
 	}
 
-	i.BroadcastToRoom(user.Room, message.Event, message.Origin)
+	i.BroadcastToRoom(user.Room, msg.Event, msg.Origin)
 }
 
-func (i *Im) joinRoom(conn *socket.Connect, message *socket.Message) {
-	user, ok := conn.User.(*User)
+func (i *Im) joinRoom(msg *socket.Message) {
+	user, ok := msg.User().(*User)
 	if !ok {
-		_ = i.Reply(conn, &Response{Message: "未登录，试试重启？"})
+		_ = i.Reply(false, msg, &Response{Message: "未登录，试试重启？"})
 		return
 	}
 	room := Room{}
-	err := json.Unmarshal(message.Origin, &room)
+	err := json.Unmarshal(msg.Origin, &room)
 	if err != nil {
 		print(err.Error())
-		_ = i.Reply(conn, &Response{Message: "错误的请求，也许是因为软件要更新了"})
+		_ = i.Reply(false, msg, &Response{Message: "错误的请求，也许是因为软件要更新了"})
 		return
 	}
 	if room, ok := i.rooms[room.ID]; ok {
@@ -122,15 +140,24 @@ func (i *Im) joinRoom(conn *socket.Connect, message *socket.Message) {
 		i.BroadcastToRoom(room, "joinRoom", user.RemovePrivacy())
 		return
 	}
-	_ = i.Reply(conn, &Response{Message: "房间不存在"})
+	_ = i.Reply(false, msg, &Response{Message: "房间不存在"})
 }
 
-func (i *Im) Reply(conn *socket.Connect, response interface{}) error {
-	return i.Send(conn, "reply", response)
+func (i *Im) Reply(success bool, msg *socket.Message, message interface{}) error {
+	return i.ws.Emit(msg.Conn, &socket.Message{
+		ID:      msg.ID,
+		Success: success,
+		Event:   "reply",
+		Payload: message,
+	})
 }
 
 func (i *Im) Send(conn *socket.Connect, event string, message interface{}) error {
-	return i.ws.Send(conn, event, message)
+	return i.ws.Emit(conn, &socket.Message{
+		Event:   event,
+		Payload: message,
+	})
+
 }
 
 func (i *Im) BroadcastToRoom(room *Room, event string, message interface{}) []error {

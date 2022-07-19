@@ -3,14 +3,16 @@ package socket
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"github.com/google/uuid"
 	"github.com/gorilla/websocket"
+	"log"
 	"time"
 )
 
 var TimeoutErr = errors.New("request Timout")
 
-type Listener func(*Connect, *Message)
+type Listener func(*Message)
 
 type Service struct {
 	poll     map[uint]*Connect
@@ -47,47 +49,49 @@ func (s *Service) Listen(event string, listener Listener) {
 
 func (s *Service) newHandler(conn *Connect) {
 	go func(conn *Connect) {
+		fmt.Println("connected")
 		for true {
 			_, msgBytes, err := conn.Conn.ReadMessage()
+
+			fmt.Println(string(msgBytes))
+
 			if err != nil {
-				_ = conn.Conn.Close()
-				conn.Online = false
-				s.Trigger(conn, &Message{Event: "disconnect"})
+				_ = conn.Close()
+
+				s.Trigger(&Message{Event: "disconnect", Conn: conn})
 				return
 			}
 
-			var message = Message{}
+			var message = Message{Conn: conn}
+
 			if err := json.Unmarshal(msgBytes, &message); err != nil {
-				print(err.Error())
+				log.Println(err)
 				continue
 			}
 
-			s.Trigger(conn, &message)
+			s.Trigger(&message)
 		}
 
 	}(conn)
 }
 
 // Trigger 触发监听者
-func (s *Service) Trigger(conn *Connect, msg *Message) {
+func (s *Service) Trigger(msg *Message) {
 	if listeners, ok := s.listener[msg.Event]; ok {
 		for _, listener := range listeners {
-			listener(conn, msg)
+			listener(msg)
 		}
 	}
 }
 
-func (s *Service) emit(conn *Connect, message *Message) error {
-	print(message)
+func (s *Service) Emit(conn *Connect, message *Message) error {
 	bytes, err := message.JsonEncode()
+	fmt.Printf("send: %s\n", bytes)
+
 	if err != nil {
 		return err
 	}
 	return conn.Conn.WriteMessage(websocket.TextMessage, bytes)
-}
-
-func (s *Service) Send(conn *Connect, event string, payload interface{}) error {
-	return s.emit(conn, &Message{Event: event, Payload: payload})
 }
 
 func (s *Service) Request(conn *Connect, event string, payload interface{}) (error, *Message) {
@@ -96,7 +100,7 @@ func (s *Service) Request(conn *Connect, event string, payload interface{}) (err
 		Event:   event,
 		Payload: payload,
 	}
-	if err := s.emit(conn, &message); err != nil {
+	if err := s.Emit(conn, &message); err != nil {
 		return err, nil
 	}
 

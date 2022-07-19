@@ -1,14 +1,9 @@
 package im
 
 type Room struct {
-	ID     int
-	Master *User
-	Users  []*User
-}
-
-func NewRoom(id int, master *User) *Room {
-	user := master.RemovePrivacy()
-	return &Room{ID: id, Master: user, Users: []*User{user}}
+	ID     int `json:"id"`
+	Master *User `json:"master"`
+	Users  []*User `json:"users"`
 }
 
 func (r *Room) AddUser(user *User) {
@@ -29,7 +24,7 @@ func (r *Room) RemoveUser(user *User) {
 		return
 	}
 	for i := 0; i < len(r.Users); i++ {
-		if r.Users[i].Phone == user.Phone {
+		if r.Users[i].ID == user.ID {
 			r.Users = append(r.Users[:i], r.Users[i+1:]...)
 			break
 		}
