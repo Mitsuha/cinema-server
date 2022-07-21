@@ -1,12 +1,23 @@
 package im
 
+import "encoding/json"
+
 type Room struct {
-	ID     int `json:"id"`
-	Master *User `json:"master"`
-	Users  []*User `json:"users"`
+	ID       int             `json:"id"`
+	Master   *User           `json:"master"`
+	Users    []*User         `json:"users"`
+	Playlist json.RawMessage `json:"playlist"`
+	Current  json.RawMessage `json:"current"`
 }
 
 func (r *Room) AddUser(user *User) {
+	for i := 0; i < len(r.Users); i++ {
+		if r.Users[i].ID == user.ID {
+			r.Users[i] = user
+			return
+		}
+	}
+
 	r.Users = append(r.Users, user)
 	user.Room = r
 }

@@ -3,7 +3,6 @@ package socket
 import (
 	"encoding/json"
 	"errors"
-	"fmt"
 	"github.com/google/uuid"
 	"github.com/gorilla/websocket"
 	"log"
@@ -49,13 +48,14 @@ func (s *Service) Listen(event string, listener Listener) {
 
 func (s *Service) newHandler(conn *Connect) {
 	go func(conn *Connect) {
-		fmt.Println("connected")
+		log.Println("connected")
 		for true {
 			_, msgBytes, err := conn.Conn.ReadMessage()
 
-			fmt.Println(string(msgBytes))
+			log.Printf("recive: \t %s",msgBytes)
 
 			if err != nil {
+				log.Println(err)
 				_ = conn.Close()
 
 				s.Trigger(&Message{Event: "disconnect", Conn: conn})
@@ -86,11 +86,12 @@ func (s *Service) Trigger(msg *Message) {
 
 func (s *Service) Emit(conn *Connect, message *Message) error {
 	bytes, err := message.JsonEncode()
-	fmt.Printf("send: %s\n", bytes)
+	log.Printf("send: \t%s\n", bytes)
 
 	if err != nil {
 		return err
 	}
+
 	return conn.Conn.WriteMessage(websocket.TextMessage, bytes)
 }
 

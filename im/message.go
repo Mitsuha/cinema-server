@@ -18,5 +18,5 @@ type ChatMessage struct {
 }
 
 type Response struct {
-	Message string
+	Message string `json:"message"`
 }

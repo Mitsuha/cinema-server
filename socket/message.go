@@ -13,11 +13,15 @@ type Message struct {
 
 func (m *Message) JsonEncode() ([]byte, error) {
 	if m.Payload != nil {
-		bytes, err := json.Marshal(m.Payload)
-		if err != nil {
-			return nil, err
+		if _, ok := m.Payload.([]byte); ok {
+			m.Origin = m.Payload.([]byte)
+		} else {
+			if bytes, err := json.Marshal(m.Payload); err != nil {
+				return nil, err
+			} else {
+				m.Origin = bytes
+			}
 		}
-		m.Origin = bytes
 	}
 
 	return json.Marshal(m)

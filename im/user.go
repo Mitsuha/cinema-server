@@ -10,14 +10,6 @@ type User struct {
 	Conn   *socket.Connect `json:"-"`
 }
 
-func (u *User) RemovePrivacy() *User {
-	return &User{
-		ID:     u.ID,
-		Avatar: u.Avatar,
-		Name:   u.Name,
-	}
-}
-
 func (u *User) association(connect *socket.Connect) {
 	u.Conn = connect
 	connect.User = u

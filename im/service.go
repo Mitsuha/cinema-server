@@ -8,11 +8,10 @@ import (
 )
 
 type Im struct {
-	ws              *socket.Service
-	rooms           map[int]*Room
-	users           map[string]*User
-	incrementRoomID int
-	roomCreating    sync.Mutex
+	ws           *socket.Service
+	rooms        map[int]*Room
+	users        map[string]*User
+	roomCreating sync.Mutex
 }
 
 func New(ws *socket.Service) *Im {
@@ -31,8 +30,9 @@ func (i *Im) RegisterEvent() {
 	i.ws.Listen("register", i.registerUser)
 	i.ws.Listen("createRoom", i.createRoom)
 	i.ws.Listen("joinRoom", i.joinRoom)
+	i.ws.Listen("roomInfo", i.roomInfo)
 	i.ws.Listen("leaveRoom", i.leaveRoom)
-	i.ws.Listen("broadcast", i.broadcast)
+	i.ws.Listen("syncPlayList", i.syncPlayList)
 }
 
 func (i *Im) registerUser(message *socket.Message) {
@@ -62,17 +62,14 @@ func (i *Im) createRoom(msg *socket.Message) {
 		return
 	}
 
-	//if user.Room != nil {
-	//	err := i.Reply(msg, &Response{Message: "你已经在一个房间里，请退出后再试"})
-	//	if err != nil {
-	//		log.Fatalln(err)
-	//	}
-	//	return
-	//}
+	if user.Room != nil {
+		i.leaveRoom(msg)
+	}
 
 	room := i.NewRoom(user)
+	room.Playlist = msg.Origin
 
-	i.rooms[i.incrementRoomID], user.Room = room, room
+	i.rooms[room.ID], user.Room = room, room
 
 	err := i.Reply(true, msg, room)
 	if err != nil {
@@ -82,14 +79,17 @@ func (i *Im) createRoom(msg *socket.Message) {
 
 func (i *Im) NewRoom(master *User) *Room {
 	i.roomCreating.Lock()
-	defer func() {
-		i.incrementRoomID++
-		i.roomCreating.Unlock()
-	}()
+	defer i.roomCreating.Unlock()
 
-	user := master.RemovePrivacy()
+	var id int = 21066
+	//for true {
+	//	id = rand.Intn(99999) + 10000
+	//	if _, ok := i.rooms[id]; !ok {
+	//		break
+	//	}
+	//}
 
-	return &Room{ID: i.incrementRoomID, Master: user, Users: []*User{user}}
+	return &Room{ID: id, Master: master, Users: []*User{master}}
 }
 
 func (i *Im) leaveRoom(msg *socket.Message) {
@@ -109,17 +109,21 @@ func (i *Im) leaveRoom(msg *socket.Message) {
 
 	user.Room.RemoveUser(user)
 
-	i.BroadcastToRoom(user.Room, "leave", user.RemovePrivacy())
+	i.BroadcastToRoom(user.Room, "leave", user)
 	user.Room = nil
 }
 
-func (i *Im) broadcast(msg *socket.Message) {
+func (i *Im) syncPlayList(msg *socket.Message) {
 	user, ok := msg.User().(*User)
-	if !ok {
+	if !ok{
 		return
 	}
-
-	i.BroadcastToRoom(user.Room, msg.Event, msg.Origin)
+	if msg.Origin == nil {
+		_ = i.Send(msg.Conn, "syncPlayList", msg.Origin)
+	}else{
+		user.Room.Playlist = msg.Origin
+		i.BroadcastToRoom(user.Room, "syncPlayList", msg.Origin)
+	}
 }
 
 func (i *Im) joinRoom(msg *socket.Message) {
@@ -131,46 +135,31 @@ func (i *Im) joinRoom(msg *socket.Message) {
 	room := Room{}
 	err := json.Unmarshal(msg.Origin, &room)
 	if err != nil {
-		print(err.Error())
+		log.Println(err)
 		_ = i.Reply(false, msg, &Response{Message: "错误的请求，也许是因为软件要更新了"})
 		return
 	}
 	if room, ok := i.rooms[room.ID]; ok {
 		room.AddUser(user)
-		i.BroadcastToRoom(room, "joinRoom", user.RemovePrivacy())
+		_ = i.Reply(true, msg, &Response{Message: "加入成功"})
+		i.BroadcastToRoom(room, "joinRoom", user)
 		return
 	}
 	_ = i.Reply(false, msg, &Response{Message: "房间不存在"})
 }
 
-func (i *Im) Reply(success bool, msg *socket.Message, message interface{}) error {
-	return i.ws.Emit(msg.Conn, &socket.Message{
-		ID:      msg.ID,
-		Success: success,
-		Event:   "reply",
-		Payload: message,
-	})
-}
-
-func (i *Im) Send(conn *socket.Connect, event string, message interface{}) error {
-	return i.ws.Emit(conn, &socket.Message{
-		Event:   event,
-		Payload: message,
-	})
-
-}
-
-func (i *Im) BroadcastToRoom(room *Room, event string, message interface{}) []error {
-	errs := make([]error, 0)
-	for _, user := range room.Users {
-		err := i.Send(user.Conn, event, message)
-		if err != nil {
-			errs = append(errs, err)
+func (i *Im) roomInfo(msg *socket.Message) {
+	var room Room
+	if err := json.Unmarshal(msg.Origin, &room); err != nil{
+		log.Println(err)
+		return
+	}
+	if room, ok := i.rooms[room.ID]; ok {
+		if err := i.Reply(true, msg, room); err != nil{
+			log.Println(err)
 		}
+		return
 	}
-
-	if len(errs) == 0 {
-		return nil
-	}
-	return errs
+	_ = i.Reply(false, msg, Response{Message: "房间不存在"})
 }
+
