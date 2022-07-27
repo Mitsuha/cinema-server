@@ -1,13 +1,17 @@
 package im
 
-import "encoding/json"
+import (
+	"encoding/json"
+)
 
 type Room struct {
 	ID       int             `json:"id"`
 	Master   *User           `json:"master"`
 	Users    []*User         `json:"users"`
 	Playlist json.RawMessage `json:"playlist"`
-	Current  json.RawMessage `json:"current"`
+	Episode  int             `json:"episode"`
+	Duration int             `json:"duration"`
+	SyncTime int             `json:"sync_time"`
 }
 
 func (r *Room) AddUser(user *User) {
