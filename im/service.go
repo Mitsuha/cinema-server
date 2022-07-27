@@ -27,12 +27,15 @@ func (i *Im) Init() {
 }
 
 func (i *Im) RegisterEvent() {
+	i.ws.Listen("disconnect", i.disconnect)
 	i.ws.Listen("register", i.registerUser)
 	i.ws.Listen("createRoom", i.createRoom)
 	i.ws.Listen("joinRoom", i.joinRoom)
 	i.ws.Listen("roomInfo", i.roomInfo)
 	i.ws.Listen("leaveRoom", i.leaveRoom)
 	i.ws.Listen("syncPlayList", i.syncPlayList)
+	i.ws.Listen("syncEpisode", i.syncEpisode)
+	i.ws.Listen("syncDuration", i.syncDuration)
 }
 
 func (i *Im) registerUser(message *socket.Message) {
@@ -49,6 +52,10 @@ func (i *Im) registerUser(message *socket.Message) {
 		user.association(message.Conn)
 		i.users[user.ID] = &user
 	}
+}
+
+func (i *Im) disconnect(msg *socket.Message) {
+	i.leaveRoom(msg)
 }
 
 func (i *Im) createRoom(msg *socket.Message) {
@@ -81,7 +88,7 @@ func (i *Im) NewRoom(master *User) *Room {
 	i.roomCreating.Lock()
 	defer i.roomCreating.Unlock()
 
-	var id int = 21066
+	var id = 21066
 	//for true {
 	//	id = rand.Intn(99999) + 10000
 	//	if _, ok := i.rooms[id]; !ok {
@@ -94,10 +101,8 @@ func (i *Im) NewRoom(master *User) *Room {
 
 func (i *Im) leaveRoom(msg *socket.Message) {
 	user, ok := msg.User().(*User)
-	if !ok {
-		return
-	}
-	if user.Room == nil {
+
+	if ! ok || user.Room == nil || user.Room.Master == nil{
 		return
 	}
 	if user.Room.Master.ID == user.ID {
@@ -105,25 +110,61 @@ func (i *Im) leaveRoom(msg *socket.Message) {
 		i.BroadcastToRoom(user.Room, "dismiss", user.Room)
 		user.Room.Dismiss()
 		return
+	}else{
+		i.BroadcastToRoom(user.Room, "leaveRoom", user)
 	}
 
 	user.Room.RemoveUser(user)
 
-	i.BroadcastToRoom(user.Room, "leave", user)
 	user.Room = nil
 }
 
 func (i *Im) syncPlayList(msg *socket.Message) {
 	user, ok := msg.User().(*User)
-	if !ok{
+	if !ok {
 		return
 	}
 	if msg.Origin == nil {
 		_ = i.Send(msg.Conn, "syncPlayList", msg.Origin)
-	}else{
+	} else {
 		user.Room.Playlist = msg.Origin
 		i.BroadcastToRoom(user.Room, "syncPlayList", msg.Origin)
 	}
+}
+
+func (i *Im) syncEpisode(msg *socket.Message) {
+	user, ok := msg.User().(*User)
+	if !ok {
+		return
+	}
+	var data = struct {
+		Index int `json:"index"`
+	}{}
+	if err := json.Unmarshal(msg.Origin, &data); err != nil {
+		return
+	}
+
+	user.Room.Episode = data.Index
+	i.BroadcastToRoom(user.Room, "syncEpisode", data)
+}
+
+func (i *Im) syncDuration(msg *socket.Message) {
+	user, ok := msg.User().(*User)
+	if !ok {
+		return
+	}
+	var data = struct {
+		Duration int `json:"duration"`
+		Time     int `json:"time"`
+	}{}
+
+	if err := json.Unmarshal(msg.Origin, &data); err != nil {
+		return
+	}
+
+	user.Room.Duration, user.Room.SyncTime = data.Duration, data.Time
+
+	i.BroadcastToRoom(user.Room, "syncDuration", data)
 }
 
 func (i *Im) joinRoom(msg *socket.Message) {
@@ -150,12 +191,12 @@ func (i *Im) joinRoom(msg *socket.Message) {
 
 func (i *Im) roomInfo(msg *socket.Message) {
 	var room Room
-	if err := json.Unmarshal(msg.Origin, &room); err != nil{
+	if err := json.Unmarshal(msg.Origin, &room); err != nil {
 		log.Println(err)
 		return
 	}
 	if room, ok := i.rooms[room.ID]; ok {
-		if err := i.Reply(true, msg, room); err != nil{
+		if err := i.Reply(true, msg, room); err != nil {
 			log.Println(err)
 		}
 		return
@@ -163,3 +204,5 @@ func (i *Im) roomInfo(msg *socket.Message) {
 	_ = i.Reply(false, msg, Response{Message: "房间不存在"})
 }
 
+// php -> isbn ->
+// python ->
