@@ -2,6 +2,7 @@ package im
 
 import (
 	"encoding/json"
+	"hourglass-socket/distribution"
 	"hourglass-socket/socket"
 	"log"
 	"sync"
@@ -38,7 +39,7 @@ func (i *Im) RegisterEvent() {
 	i.ws.Listen("syncDuration", i.syncDuration)
 }
 
-func (i *Im) registerUser(message *socket.Message) {
+func (i *Im) registerUser(message *distribution.Message) {
 	user := User{}
 
 	if err := json.Unmarshal(message.Origin, &user); err != nil {
@@ -54,11 +55,11 @@ func (i *Im) registerUser(message *socket.Message) {
 	}
 }
 
-func (i *Im) disconnect(msg *socket.Message) {
+func (i *Im) disconnect(msg *distribution.Message) {
 	i.leaveRoom(msg)
 }
 
-func (i *Im) createRoom(msg *socket.Message) {
+func (i *Im) createRoom(msg *distribution.Message) {
 	user, ok := msg.User().(*User)
 
 	if user == nil || !ok {
@@ -99,10 +100,10 @@ func (i *Im) NewRoom(master *User) *Room {
 	return &Room{ID: id, Master: master, Users: []*User{master}}
 }
 
-func (i *Im) leaveRoom(msg *socket.Message) {
+func (i *Im) leaveRoom(msg *distribution.Message) {
 	user, ok := msg.User().(*User)
 
-	if ! ok || user.Room == nil || user.Room.Master == nil{
+	if !ok || user.Room == nil || user.Room.Master == nil {
 		return
 	}
 	if user.Room.Master.ID == user.ID {
@@ -110,7 +111,7 @@ func (i *Im) leaveRoom(msg *socket.Message) {
 		i.BroadcastToRoom(user.Room, "dismiss", user.Room)
 		user.Room.Dismiss()
 		return
-	}else{
+	} else {
 		i.BroadcastToRoom(user.Room, "leaveRoom", user)
 	}
 
@@ -119,7 +120,7 @@ func (i *Im) leaveRoom(msg *socket.Message) {
 	user.Room = nil
 }
 
-func (i *Im) syncPlayList(msg *socket.Message) {
+func (i *Im) syncPlayList(msg *distribution.Message) {
 	user, ok := msg.User().(*User)
 	if !ok {
 		return
@@ -132,7 +133,7 @@ func (i *Im) syncPlayList(msg *socket.Message) {
 	}
 }
 
-func (i *Im) syncEpisode(msg *socket.Message) {
+func (i *Im) syncEpisode(msg *distribution.Message) {
 	user, ok := msg.User().(*User)
 	if !ok {
 		return
@@ -148,7 +149,7 @@ func (i *Im) syncEpisode(msg *socket.Message) {
 	i.BroadcastToRoom(user.Room, "syncEpisode", data)
 }
 
-func (i *Im) syncDuration(msg *socket.Message) {
+func (i *Im) syncDuration(msg *distribution.Message) {
 	user, ok := msg.User().(*User)
 	if !ok {
 		return
@@ -167,7 +168,7 @@ func (i *Im) syncDuration(msg *socket.Message) {
 	i.BroadcastToRoom(user.Room, "syncDuration", data)
 }
 
-func (i *Im) joinRoom(msg *socket.Message) {
+func (i *Im) joinRoom(msg *distribution.Message) {
 	user, ok := msg.User().(*User)
 	if !ok {
 		_ = i.Reply(false, msg, &Response{Message: "未登录，试试重启？"})
@@ -189,7 +190,7 @@ func (i *Im) joinRoom(msg *socket.Message) {
 	_ = i.Reply(false, msg, &Response{Message: "房间不存在"})
 }
 
-func (i *Im) roomInfo(msg *socket.Message) {
+func (i *Im) roomInfo(msg *distribution.Message) {
 	var room Room
 	if err := json.Unmarshal(msg.Origin, &room); err != nil {
 		log.Println(err)

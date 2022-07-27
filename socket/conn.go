@@ -2,15 +2,16 @@ package socket
 
 import (
 	"github.com/gorilla/websocket"
+	"hourglass-socket/distribution"
 )
 
 type Connect struct {
-	User   interface{}
+	Attach interface{}
 	Conn   *websocket.Conn
 	Online bool
 }
 
-func (c *Connect) Emit(message *Message) error {
+func (c *Connect) Emit(message *distribution.Message) error {
 	return c.Conn.WriteJSON(message)
 }
 
