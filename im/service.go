@@ -1,209 +1,61 @@
 package im
 
 import (
-	"encoding/json"
-	"hourglass-socket/distribution"
-	"hourglass-socket/socket"
-	"log"
-	"sync"
+    "hourglass-socket/distribution"
+    "hourglass-socket/model"
+    "sync"
 )
 
 type Im struct {
-	ws           *socket.Service
-	rooms        map[int]*Room
-	users        map[string]*User
-	roomCreating sync.Mutex
+    Distributor  *distribution.Distribution
+    Rooms        map[int]*model.Room
+    Users        map[string]*model.User
+    roomCreating sync.Mutex
 }
 
-func New(ws *socket.Service) *Im {
-	return &Im{
-		ws:    ws,
-		rooms: make(map[int]*Room),
-		users: make(map[string]*User),
-	}
+func Register(distributor *distribution.Distribution) *Im {
+    im := &Im{
+        Distributor: distributor,
+        Rooms:       make(map[int]*model.Room),
+        Users:       make(map[string]*model.User),
+    }
+    im.Register()
+    
+    return im
 }
 
-func (i *Im) Init() {
-	i.RegisterEvent()
+func (i *Im) Register() {
+    i.Distributor.RegisterMany(map[string]*distribution.Listener{
+        "disconnect": {Action: i.disconnect},
+        "register":   {Action: i.registerUser},
+        "roomInfo":   {Action: i.roomInfo},
+        "createRoom": {
+            Middlewares: []distribution.Middleware{AuthMiddleware},
+            Action:      i.createRoom,
+        },
+        "joinRoom": {
+            Middlewares: []distribution.Middleware{AuthMiddleware},
+            Action:      i.joinRoom,
+        },
+        "leaveRoom": {
+            Middlewares: []distribution.Middleware{AuthMiddleware},
+            Action:      i.leaveRoom,
+        },
+        "syncPlayList": {
+            Middlewares: []distribution.Middleware{AuthMiddleware, HasRoomMiddleware},
+            Action:      i.syncPlayList,
+        },
+        "syncEpisode": {
+            Middlewares: []distribution.Middleware{AuthMiddleware, HasRoomMiddleware},
+            Action:      i.syncEpisode,
+        },
+        "syncDuration": {
+            Middlewares: []distribution.Middleware{AuthMiddleware, HasRoomMiddleware},
+            Action:      i.syncDuration,
+        },
+        "syncPlayingStatus": {
+            Middlewares: []distribution.Middleware{AuthMiddleware, HasRoomMiddleware},
+            Action:      i.syncPlayingStatus,
+        },
+    })
 }
-
-func (i *Im) RegisterEvent() {
-	i.ws.Listen("disconnect", i.disconnect)
-	i.ws.Listen("register", i.registerUser)
-	i.ws.Listen("createRoom", i.createRoom)
-	i.ws.Listen("joinRoom", i.joinRoom)
-	i.ws.Listen("roomInfo", i.roomInfo)
-	i.ws.Listen("leaveRoom", i.leaveRoom)
-	i.ws.Listen("syncPlayList", i.syncPlayList)
-	i.ws.Listen("syncEpisode", i.syncEpisode)
-	i.ws.Listen("syncDuration", i.syncDuration)
-}
-
-func (i *Im) registerUser(message *distribution.Message) {
-	user := User{}
-
-	if err := json.Unmarshal(message.Origin, &user); err != nil {
-		log.Fatalln(err)
-		return
-	}
-
-	if u, ok := i.users[user.ID]; ok {
-		u.association(message.Conn)
-	} else {
-		user.association(message.Conn)
-		i.users[user.ID] = &user
-	}
-}
-
-func (i *Im) disconnect(msg *distribution.Message) {
-	i.leaveRoom(msg)
-}
-
-func (i *Im) createRoom(msg *distribution.Message) {
-	user, ok := msg.User().(*User)
-
-	if user == nil || !ok {
-		err := i.Reply(true, msg, &Response{Message: "未登录，试试重启？"})
-		if err != nil {
-			log.Fatalln(err)
-		}
-		return
-	}
-
-	if user.Room != nil {
-		i.leaveRoom(msg)
-	}
-
-	room := i.NewRoom(user)
-	room.Playlist = msg.Origin
-
-	i.rooms[room.ID], user.Room = room, room
-
-	err := i.Reply(true, msg, room)
-	if err != nil {
-		log.Fatalln(err)
-	}
-}
-
-func (i *Im) NewRoom(master *User) *Room {
-	i.roomCreating.Lock()
-	defer i.roomCreating.Unlock()
-
-	var id = 21066
-	//for true {
-	//	id = rand.Intn(99999) + 10000
-	//	if _, ok := i.rooms[id]; !ok {
-	//		break
-	//	}
-	//}
-
-	return &Room{ID: id, Master: master, Users: []*User{master}}
-}
-
-func (i *Im) leaveRoom(msg *distribution.Message) {
-	user, ok := msg.User().(*User)
-
-	if !ok || user.Room == nil || user.Room.Master == nil {
-		return
-	}
-	if user.Room.Master.ID == user.ID {
-		delete(i.rooms, user.Room.ID)
-		i.BroadcastToRoom(user.Room, "dismiss", user.Room)
-		user.Room.Dismiss()
-		return
-	} else {
-		i.BroadcastToRoom(user.Room, "leaveRoom", user)
-	}
-
-	user.Room.RemoveUser(user)
-
-	user.Room = nil
-}
-
-func (i *Im) syncPlayList(msg *distribution.Message) {
-	user, ok := msg.User().(*User)
-	if !ok {
-		return
-	}
-	if msg.Origin == nil {
-		_ = i.Send(msg.Conn, "syncPlayList", msg.Origin)
-	} else {
-		user.Room.Playlist = msg.Origin
-		i.BroadcastToRoom(user.Room, "syncPlayList", msg.Origin)
-	}
-}
-
-func (i *Im) syncEpisode(msg *distribution.Message) {
-	user, ok := msg.User().(*User)
-	if !ok {
-		return
-	}
-	var data = struct {
-		Index int `json:"index"`
-	}{}
-	if err := json.Unmarshal(msg.Origin, &data); err != nil {
-		return
-	}
-
-	user.Room.Episode = data.Index
-	i.BroadcastToRoom(user.Room, "syncEpisode", data)
-}
-
-func (i *Im) syncDuration(msg *distribution.Message) {
-	user, ok := msg.User().(*User)
-	if !ok {
-		return
-	}
-	var data = struct {
-		Duration int `json:"duration"`
-		Time     int `json:"time"`
-	}{}
-
-	if err := json.Unmarshal(msg.Origin, &data); err != nil {
-		return
-	}
-
-	user.Room.Duration, user.Room.SyncTime = data.Duration, data.Time
-
-	i.BroadcastToRoom(user.Room, "syncDuration", data)
-}
-
-func (i *Im) joinRoom(msg *distribution.Message) {
-	user, ok := msg.User().(*User)
-	if !ok {
-		_ = i.Reply(false, msg, &Response{Message: "未登录，试试重启？"})
-		return
-	}
-	room := Room{}
-	err := json.Unmarshal(msg.Origin, &room)
-	if err != nil {
-		log.Println(err)
-		_ = i.Reply(false, msg, &Response{Message: "错误的请求，也许是因为软件要更新了"})
-		return
-	}
-	if room, ok := i.rooms[room.ID]; ok {
-		room.AddUser(user)
-		_ = i.Reply(true, msg, &Response{Message: "加入成功"})
-		i.BroadcastToRoom(room, "joinRoom", user)
-		return
-	}
-	_ = i.Reply(false, msg, &Response{Message: "房间不存在"})
-}
-
-func (i *Im) roomInfo(msg *distribution.Message) {
-	var room Room
-	if err := json.Unmarshal(msg.Origin, &room); err != nil {
-		log.Println(err)
-		return
-	}
-	if room, ok := i.rooms[room.ID]; ok {
-		if err := i.Reply(true, msg, room); err != nil {
-			log.Println(err)
-		}
-		return
-	}
-	_ = i.Reply(false, msg, Response{Message: "房间不存在"})
-}
-
-// php -> isbn ->
-// python ->

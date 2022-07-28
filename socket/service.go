@@ -2,7 +2,6 @@ package socket
 
 import (
 	"github.com/gorilla/websocket"
-	"hourglass-socket/distribution"
 	"log"
 )
 
@@ -26,6 +25,7 @@ func (s *Service) HandleConn(conn *websocket.Conn) {
 	s.newHandler(&Connect{
 		Conn:   conn,
 		Online: true,
+		Service: s,
 	})
 }
 
@@ -68,13 +68,8 @@ func (s *Service) Trigger(conn *Connect, event string, data []byte) {
 	}
 }
 
-func (s *Service) Emit(conn *Connect, message *distribution.Message) error {
-	bytes, err := message.JsonEncode()
-	log.Printf("send: \t%s\n", bytes)
-
-	if err != nil {
-		return err
-	}
-
-	return conn.Conn.WriteMessage(websocket.TextMessage, bytes)
+func (s *Service) Emit(conn *Connect, data []byte) error {
+	log.Printf("send: \t%s\n", data)
+	
+	return conn.Conn.WriteMessage(websocket.TextMessage, data)
 }

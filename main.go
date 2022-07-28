@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"github.com/gorilla/websocket"
 	"hourglass-socket/distribution"
+	"hourglass-socket/im"
 	"hourglass-socket/socket"
 	"net/http"
 )
@@ -16,12 +17,10 @@ var upgrade = websocket.Upgrader{
 func main() {
 	ws := socket.New()
 
-	_ = distribution.Listen(ws)
+	distributor := distribution.Listen(ws)
 
-	//imService := im.New(wsService)
-
-	//imService.Init()
-
+	_ = im.Register(distributor)
+	
 	http.HandleFunc("/ws", func(w http.ResponseWriter, r *http.Request) {
 		conn, err := upgrade.Upgrade(w, r, nil)
 		if err != nil {
