@@ -155,3 +155,17 @@ func (i *Im) syncPlayingStatus(msg *distribution.Message) {
     
     i.BroadcastToRoom(msg.User.Room, "syncPlayingStatus", data)
 }
+
+func (i *Im) syncSpeed(msg *distribution.Message) {
+    var data = struct {
+        Speed float32 `json:"speed"`
+    }{}
+
+    if err := json.Unmarshal(msg.Origin, &data); err != nil {
+        return
+    }
+
+    msg.User.Room.Speed = data.Speed
+
+    i.BroadcastToRoom(msg.User.Room, "syncSpeed", data)
+}

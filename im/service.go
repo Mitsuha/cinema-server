@@ -38,7 +38,7 @@ func (i *Im) Register() {
             Action:      i.joinRoom,
         },
         "leaveRoom": {
-            Middlewares: []distribution.Middleware{AuthMiddleware},
+            Middlewares: []distribution.Middleware{AuthMiddleware, HasRoomMiddleware},
             Action:      i.leaveRoom,
         },
         "syncPlayList": {
@@ -56,6 +56,10 @@ func (i *Im) Register() {
         "syncPlayingStatus": {
             Middlewares: []distribution.Middleware{AuthMiddleware, HasRoomMiddleware},
             Action:      i.syncPlayingStatus,
+        },
+        "syncSpeed": {
+            Middlewares: []distribution.Middleware{AuthMiddleware, HasRoomMiddleware},
+            Action:      i.syncSpeed,
         },
     })
 }
