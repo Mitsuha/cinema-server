@@ -42,20 +42,25 @@ func (t *Tracker) Close(id string) {
 	}
 }
 
-func (t *Tracker) Track(conn *socket.Connect, message *Message) (error, *Message) {
+func (t *Tracker) Track(conn *socket.Connect, message *Message) (*Message, error) {
 	message.ID = uuid.New().String()
 
-	//if err := conn.Emit(&message.to); err != nil {
-	//	return err, nil
-	//}
+	data, err := message.JsonEncode()
+	if err != nil {
+		return nil, err
+	}
+
+	if err := conn.Emit(data); err != nil {
+		return nil, err
+	}
 
 	ch := t.MakeChannel(message.ID)
 	defer t.Close(message.ID)
 
 	select {
 	case response := <-ch:
-		return nil, response
+		return response, nil
 	case <-time.After(3 * time.Second):
-		return TimeoutErr, nil
+		return nil, TimeoutErr
 	}
 }
