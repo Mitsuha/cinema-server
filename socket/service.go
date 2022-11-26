@@ -2,8 +2,8 @@ package socket
 
 import (
 	"github.com/gorilla/websocket"
-	"hourglass-socket/distribution"
 	"log"
+	"strings"
 )
 
 type Listener func(*Connect, []byte)
@@ -35,7 +35,11 @@ func (s *Service) newHandler(conn *Connect) {
 		for true {
 			_, msg, err := conn.Conn.ReadMessage()
 
-			log.Printf("recive: \t %s", msg)
+			if strings.Contains(string(msg), "createRoom") {
+				log.Printf("recive: \t %s", "createRoom")
+			} else {
+				log.Printf("recive: \t %s", msg)
+			}
 
 			if err != nil {
 				log.Println(err)
@@ -68,13 +72,13 @@ func (s *Service) Trigger(conn *Connect, event string, data []byte) {
 	}
 }
 
-func (s *Service) Emit(conn *Connect, message *distribution.Message) error {
-	bytes, err := message.JsonEncode()
-	log.Printf("send: \t%s\n", bytes)
+func (s *Service) Emit(conn *Connect, message interface{}) error {
+	log.Printf("emit : %s\n", message)
 
-	if err != nil {
-		return err
-	}
+	return conn.Conn.WriteJSON(message)
+}
 
-	return conn.Conn.WriteMessage(websocket.TextMessage, bytes)
+func (s *Service) EmitRaw(connect *Connect, message []byte) error {
+	log.Printf("emit raw : %s\n", string(message))
+	return connect.Conn.WriteMessage(websocket.TextMessage, message)
 }

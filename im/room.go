@@ -5,13 +5,16 @@ import (
 )
 
 type Room struct {
-	ID       int             `json:"id"`
-	Master   *User           `json:"master"`
-	Users    []*User         `json:"users"`
-	Playlist json.RawMessage `json:"playlist"`
-	Episode  int             `json:"episode"`
-	Duration int             `json:"duration"`
-	SyncTime int             `json:"sync_time"`
+	ID        int               `json:"id"`
+	Master    *User             `json:"master"`
+	Users     []*User           `json:"users"`
+	Playlist  json.RawMessage   `json:"playlist"`
+	Message   []json.RawMessage `json:"message"`
+	Speed     float32           `json:"speed"`
+	IsPlaying bool              `json:"is_playing"`
+	Episode   int               `json:"episode"`
+	Duration  int               `json:"duration"`
+	SyncTime  int               `json:"sync_time"`
 }
 
 func (r *Room) AddUser(user *User) {

@@ -12,5 +12,5 @@ type User struct {
 
 func (u *User) association(connect *socket.Connect) {
 	u.Conn = connect
-	connect.User = u
+	connect.Attach = u
 }

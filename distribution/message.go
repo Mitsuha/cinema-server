@@ -31,5 +31,5 @@ func (m *Message) JsonEncode() ([]byte, error) {
 }
 
 func (m *Message) User() interface{} {
-	return m.Conn.User
+	return m.Conn.Attach
 }

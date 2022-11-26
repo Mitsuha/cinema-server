@@ -7,18 +7,23 @@ import (
 )
 
 type Distribution struct {
+	Socket    *socket.Service
 	Listeners map[string][]Listener
 	Tracker   *Tracker
 }
 
 func Listen(service *socket.Service) *Distribution {
 	var distributor = Distribution{
+		Socket:    service,
+		Listeners: map[string][]Listener{},
 		Tracker: &Tracker{
 			events: make(map[string]chan *Message),
 		},
 	}
 
 	service.Listen("connect", distributor.OnConnect)
+	service.Listen("disconnect", distributor.onDisconnect)
+	service.Listen("message", distributor.onMessage)
 
 	return &distributor
 }
@@ -60,6 +65,7 @@ func (d *Distribution) Register(event string, listener Listener) {
 	} else {
 		d.Listeners[event] = []Listener{listener}
 	}
+	log.Println("registered event: " + event)
 }
 
 // Trigger 触发监听者

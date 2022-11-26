@@ -4,7 +4,9 @@ import (
 	"fmt"
 	"github.com/gorilla/websocket"
 	"hourglass-socket/distribution"
+	"hourglass-socket/im"
 	"hourglass-socket/socket"
+	"log"
 	"net/http"
 )
 
@@ -13,12 +15,16 @@ var upgrade = websocket.Upgrader{
 	WriteBufferSize: 1024,
 }
 
+const ListenAddr = "0.0.0.0:3096"
+
 func main() {
+	log.SetFlags(log.Llongfile | log.Ltime)
+
 	ws := socket.New()
 
-	_ = distribution.Listen(ws)
+	service := im.New(distribution.Listen(ws))
 
-	//imService := im.New(wsService)
+	service.Init()
 
 	//imService.Init()
 
@@ -32,7 +38,9 @@ func main() {
 		ws.HandleConn(conn)
 	})
 
-	err := http.ListenAndServe("0.0.0.0:3096", nil)
+	log.Println("Service started on " + ListenAddr)
+
+	err := http.ListenAndServe(ListenAddr, nil)
 
 	if err != nil {
 		fmt.Println(err)
