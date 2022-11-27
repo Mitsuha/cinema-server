@@ -3,6 +3,7 @@ package distribution
 import (
 	"errors"
 	"github.com/google/uuid"
+	"github.com/gorilla/websocket"
 	"hourglass-socket/socket"
 	"time"
 )
@@ -50,7 +51,7 @@ func (t *Tracker) Track(conn *socket.Connect, message *Message) (*Message, error
 		return nil, err
 	}
 
-	if err := conn.Emit(data); err != nil {
+	if err := conn.Conn.WriteMessage(websocket.TextMessage, data); err != nil {
 		return nil, err
 	}
 

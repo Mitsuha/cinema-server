@@ -181,18 +181,22 @@ func (i *Im) syncEpisode(msg *distribution.Message) {
 		PlayInfo []json.RawMessage `json:"playInfo"`
 	}{}
 
-	var cursor = 0
-	for _, u := range user.Room.Users {
-		if u.ID != user.Room.Master.ID {
-			_ = i.distribution.Send(u.Conn, "syncEpisode", map[string]interface{}{
-				"index":    data.Index,
-				"playInfo": data.PlayInfo[cursor%len(data.PlayInfo)],
-			})
-			cursor++
+	if err := json.Unmarshal(msg.Origin, &data); err == nil && len(data.PlayInfo) != 0 {
+		var cursor = 0
+		for _, u := range user.Room.Users {
+			if u.ID != user.Room.Master.ID {
+				_ = i.distribution.Send(u.Conn, "syncEpisode", map[string]interface{}{
+					"index":    data.Index,
+					"playInfo": data.PlayInfo[cursor%len(data.PlayInfo)],
+				})
+				cursor++
+			}
 		}
-	}
 
-	user.Room.Episode, user.Room.Duration, user.Room.Speed = data.Index, 0, 1
+		user.Room.Episode, user.Room.Duration, user.Room.Speed = data.Index, 0, 1
+	} else {
+		log.Println(err)
+	}
 }
 
 func (i *Im) syncDuration(msg *distribution.Message) {
@@ -267,9 +271,19 @@ func (i *Im) joinRoom(msg *distribution.Message) {
 		return
 	}
 
-	if room, ok := i.rooms[room.ID]; !ok {
+	if room, ok := i.rooms[room.ID]; ok {
+		answer, err := i.distribution.Tracker.Track(room.Master.Conn, &distribution.Message{
+			Event:   "askPlayInfo",
+			Payload: map[int]int{},
+		})
+
+		if err != nil {
+			log.Println(err)
+			return
+		}
+
 		room.AddUser(user)
-		_ = i.distribution.Reply(true, msg, &Response{Message: "加入成功"})
+		_ = i.distribution.Reply(true, msg, answer.Origin)
 		i.BroadcastToRoom(room, "joinRoom", user)
 		return
 	}
