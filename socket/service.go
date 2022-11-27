@@ -1,32 +1,23 @@
 package socket
 
 import (
-	"encoding/json"
-	"errors"
-	"github.com/google/uuid"
 	"github.com/gorilla/websocket"
 	"log"
-	"time"
+	"strings"
 )
 
-var TimeoutErr = errors.New("request Timout")
-
-type Listener func(*Message)
+type Listener func(*Connect, []byte)
 
 type Service struct {
-	poll     map[uint]*Connect
-	listener map[string][]Listener
-	tracker  *Tracker
+	Connects  []*Connect
+	Listeners map[string][]Listener
 }
 
 func New() *Service {
 	service := &Service{
-		poll:     map[uint]*Connect{},
-		listener: map[string][]Listener{},
-		tracker:  newTracker(),
+		Connects:  make([]*Connect, 0, 100),
+		Listeners: map[string][]Listener{},
 	}
-
-	service.Listen("reply", service.tracker.Listen)
 
 	return service
 }
@@ -38,80 +29,56 @@ func (s *Service) HandleConn(conn *websocket.Conn) {
 	})
 }
 
-func (s *Service) Listen(event string, listener Listener) {
-	if _, ok := s.listener[event]; ok {
-		s.listener[event] = append(s.listener[event], listener)
-	} else {
-		s.listener[event] = []Listener{listener}
-	}
-}
-
 func (s *Service) newHandler(conn *Connect) {
 	go func(conn *Connect) {
 		log.Println("connected")
 		for true {
-			_, msgBytes, err := conn.Conn.ReadMessage()
+			_, msg, err := conn.Conn.ReadMessage()
 
-			log.Printf("recive: \t %s",msgBytes)
+			if strings.Contains(string(msg), "createRoom") {
+				log.Printf("recive: \t %s", "createRoom")
+			} else {
+				log.Printf("recive: \t %s", msg)
+			}
 
 			if err != nil {
 				log.Println(err)
 				_ = conn.Close()
 
-				s.Trigger(&Message{Event: "disconnect", Conn: conn})
+				s.Trigger(conn, "disconnect", nil)
 				return
 			}
 
-			var message = Message{Conn: conn}
-
-			if err := json.Unmarshal(msgBytes, &message); err != nil {
-				log.Println(err)
-				continue
-			}
-
-			s.Trigger(&message)
+			s.Trigger(conn, "message", msg)
 		}
 
 	}(conn)
 }
 
+func (s *Service) Listen(event string, listener Listener) {
+	if _, ok := s.Listeners[event]; ok {
+		s.Listeners[event] = append(s.Listeners[event], listener)
+	} else {
+		s.Listeners[event] = []Listener{listener}
+	}
+}
+
 // Trigger 触发监听者
-func (s *Service) Trigger(msg *Message) {
-	if listeners, ok := s.listener[msg.Event]; ok {
+func (s *Service) Trigger(conn *Connect, event string, data []byte) {
+	if listeners, ok := s.Listeners[event]; ok {
 		for _, listener := range listeners {
-			listener(msg)
+			listener(conn, data)
 		}
 	}
 }
 
-func (s *Service) Emit(conn *Connect, message *Message) error {
-	bytes, err := message.JsonEncode()
-	log.Printf("send: \t%s\n", bytes)
+func (s *Service) Emit(conn *Connect, message interface{}) error {
+	log.Printf("emit : %s\n", message)
 
-	if err != nil {
-		return err
-	}
-
-	return conn.Conn.WriteMessage(websocket.TextMessage, bytes)
+	return conn.Conn.WriteJSON(message)
 }
 
-func (s *Service) Request(conn *Connect, event string, payload interface{}) (error, *Message) {
-	message := Message{
-		ID:      uuid.New().String(),
-		Event:   event,
-		Payload: payload,
-	}
-	if err := s.Emit(conn, &message); err != nil {
-		return err, nil
-	}
-
-	ch := s.tracker.Track(message.ID)
-	defer s.tracker.Close(message.ID)
-
-	select {
-	case response := <-ch:
-		return nil, response
-	case <-time.After(3 * time.Second):
-		return TimeoutErr, nil
-	}
+func (s *Service) EmitRaw(connect *Connect, message []byte) error {
+	log.Printf("emit raw : %s\n", string(message))
+	return connect.Conn.WriteMessage(websocket.TextMessage, message)
 }

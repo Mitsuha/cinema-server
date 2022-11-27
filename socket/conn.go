@@ -5,12 +5,12 @@ import (
 )
 
 type Connect struct {
-	User   interface{}
+	Attach interface{}
 	Conn   *websocket.Conn
 	Online bool
 }
 
-func (c *Connect) Emit(message *Message) error {
+func (c *Connect) Emit(message interface{}) error {
 	return c.Conn.WriteJSON(message)
 }
 

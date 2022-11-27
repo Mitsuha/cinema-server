@@ -1,6 +1,8 @@
-package im
+package model
 
-import "hourglass-socket/socket"
+import (
+	"hourglass-socket/socket"
+)
 
 type User struct {
 	ID     string          `json:"id"`
@@ -10,7 +12,7 @@ type User struct {
 	Conn   *socket.Connect `json:"-"`
 }
 
-func (u *User) association(connect *socket.Connect) {
+func (u *User) Association(connect *socket.Connect) {
 	u.Conn = connect
 	connect.Attach = u
 }
