@@ -1,10 +1,11 @@
 package distribution
 
 import (
-	"hourglass-socket/socket"
+	"github.com/gorilla/websocket"
+	"log"
 )
 
-func (d *Distribution) Reply(success bool, msg *Message, message interface{}) error {
+func Reply(conn *websocket.Conn, success bool, msg *Message, message interface{}) error {
 	m := Message{
 		ID:      msg.ID,
 		Success: success,
@@ -15,19 +16,22 @@ func (d *Distribution) Reply(success bool, msg *Message, message interface{}) er
 	if bytes, err := m.JsonEncode(); err != nil {
 		return err
 	} else {
-		return d.Socket.EmitRaw(msg.Conn, bytes)
+		log.Println(string(bytes))
+
+		return conn.WriteMessage(websocket.TextMessage, bytes)
 	}
 }
 
-func (d *Distribution) Send(conn *socket.Connect, event string, message interface{}) error {
+func Emit(conn *websocket.Conn, event string, message interface{}) error {
 	m := &Message{
 		Event:   event,
 		Payload: message,
 	}
+	if bytes, err := m.JsonEncode(); err == nil {
+		log.Println(string(bytes))
 
-	if bytes, err := m.JsonEncode(); err != nil {
-		return err
+		return conn.WriteMessage(websocket.TextMessage, bytes)
 	} else {
-		return d.Socket.EmitRaw(conn, bytes)
+		return err
 	}
 }

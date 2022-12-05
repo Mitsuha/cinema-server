@@ -2,86 +2,76 @@ package distribution
 
 import (
 	"encoding/json"
-	"hourglass-socket/socket"
+	"github.com/gorilla/websocket"
 	"log"
+	"strings"
 )
 
+type ServiceCreator func(conn *websocket.Conn) Service
+type Hooker func(message *Message) bool
+
 type Distribution struct {
-	Socket    *socket.Service
-	Listeners map[string][]Listener
-	Tracker   *Tracker
+	serviceCreator ServiceCreator
+	hooks          map[string][]Hooker
 }
 
-func Listen(service *socket.Service) *Distribution {
+func New(maker ServiceCreator) *Distribution {
 	var distributor = Distribution{
-		Socket:    service,
-		Listeners: map[string][]Listener{},
-		Tracker: &Tracker{
-			events: make(map[string]chan *Message),
-		},
+		serviceCreator: maker,
+		hooks:          make(map[string][]Hooker),
 	}
-
-	service.Listen("connect", distributor.OnConnect)
-	service.Listen("disconnect", distributor.onDisconnect)
-	service.Listen("message", distributor.onMessage)
-
 	return &distributor
 }
 
-func (d *Distribution) OnConnect(conn *socket.Connect, _ []byte) {
-	d.Trigger(&Message{
-		Event:   "connect",
-		Success: true,
-		Conn:    conn,
-	})
+func (d *Distribution) Enable(plugin Plugin) {
+	plugin.Boot(d)
 }
 
-func (d *Distribution) onDisconnect(conn *socket.Connect, _ []byte) {
-	d.Trigger(&Message{
-		Event:   "disconnect",
-		Success: true,
-		Conn:    conn,
-	})
-}
-
-func (d *Distribution) onMessage(conn *socket.Connect, data []byte) {
-	var msg = &Message{Conn: conn}
-
-	if err := json.Unmarshal(data, msg); err != nil {
-		log.Println(err)
-		return
-	}
-
-	if msg.Event == "reply" {
-		d.Tracker.Handle(msg)
+func (d *Distribution) Hook(event string, hooker Hooker) {
+	if hookers, ok := d.hooks[event]; ok {
+		d.hooks[event] = append(hookers, hooker)
 	} else {
-		d.Trigger(msg)
+		d.hooks[event] = []Hooker{hooker}
 	}
 }
 
-func (d *Distribution) Register(event string, listener Listener) {
-	if _, ok := d.Listeners[event]; ok {
-		d.Listeners[event] = append(d.Listeners[event], listener)
-	} else {
-		d.Listeners[event] = []Listener{listener}
+func (d *Distribution) TakeOver(conn *websocket.Conn) {
+	var service = d.serviceCreator(conn)
+	service.Boot(d)
+
+	d.Trigger(service, &Message{Event: "connect"})
+	for true {
+		_, raw, err := conn.ReadMessage()
+
+		if err != nil {
+			_ = conn.Close()
+
+			d.Trigger(service, &Message{Event: "disconnect", Payload: map[string]string{
+				"message": err.Error(),
+			}})
+			return
+		}
+
+		if strings.Contains(string(raw), "createRoom") {
+			log.Printf("recive: \t %s", "createRoom")
+		} else {
+			log.Printf("recive: \t %s", raw)
+		}
+
+		var message Message
+		if err := json.Unmarshal(raw, &message); err == nil {
+			d.Trigger(service, &message)
+		}
 	}
-	log.Println("registered event: " + event)
 }
 
-// Trigger 触发监听者
-func (d *Distribution) Trigger(message *Message) {
-	if listeners, ok := d.Listeners[message.Event]; ok {
-		for _, listener := range listeners {
-			var jumpOver bool
-			for _, middleware := range listener.Middlewares {
-				if !middleware(message) {
-					jumpOver = true
-					break
-				}
-			}
-			if !jumpOver {
-				listener.Action(message)
+func (d *Distribution) Trigger(service Service, message *Message) {
+	if hookers, ok := d.hooks[message.Event]; ok {
+		for _, hooker := range hookers {
+			if !hooker(message) {
+				return
 			}
 		}
 	}
+	service.Received(message)
 }

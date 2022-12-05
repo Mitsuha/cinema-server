@@ -1,11 +1,14 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"github.com/gorilla/websocket"
+	"gopkg.in/yaml.v3"
 	"hourglass-socket/distribution"
-	"hourglass-socket/im"
-	"hourglass-socket/socket"
+	"hourglass-socket/model"
+	"hourglass-socket/service"
+	"io/ioutil"
 	"log"
 	"net/http"
 )
@@ -20,13 +23,27 @@ const ListenAddr = "0.0.0.0:3096"
 func main() {
 	log.SetFlags(log.Llongfile | log.Ltime)
 
-	ws := socket.New()
+	var config struct {
+		DB            *model.DBConfig      `yaml:"DB"`
+		ClientVersion *model.ClientVersion `yaml:"ClientVersion"`
+	}
 
-	service := im.New(distribution.Listen(ws))
+	if content, err := ioutil.ReadFile("./env.yaml"); err == nil {
+		if err := yaml.Unmarshal(content, &config); err != nil {
+			log.Fatalln(err)
+		}
 
-	service.Init()
+		if err := model.Boot(config.DB); err != nil {
+			log.Fatalln(err)
+		}
+	} else {
+		log.Fatalln(err)
+	}
 
-	//imService.Init()
+	var distributor = distribution.New(service.New)
+
+	distributor.Enable(&distribution.ShowConnectLog{})
+	distributor.Enable(distribution.DTracker())
 
 	http.HandleFunc("/ws", func(w http.ResponseWriter, r *http.Request) {
 		conn, err := upgrade.Upgrade(w, r, nil)
@@ -35,7 +52,13 @@ func main() {
 			return
 		}
 
-		ws.HandleConn(conn)
+		go distributor.TakeOver(conn)
+	})
+
+	http.HandleFunc("/version", func(w http.ResponseWriter, r *http.Request) {
+		version, _ := json.Marshal(config.ClientVersion)
+
+		_, _ = w.Write(version)
 	})
 
 	log.Println("Service started on " + ListenAddr)

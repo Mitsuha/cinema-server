@@ -2,7 +2,7 @@ package distribution
 
 import (
 	"encoding/json"
-	"hourglass-socket/socket"
+	"fmt"
 )
 
 type Message struct {
@@ -11,7 +11,6 @@ type Message struct {
 	Success bool            `json:"success"`
 	Payload interface{}     `json:"-"`
 	Origin  json.RawMessage `json:"payload"`
-	Conn    *socket.Connect `json:"-"`
 }
 
 func (m *Message) JsonEncode() ([]byte, error) {
@@ -26,10 +25,6 @@ func (m *Message) JsonEncode() ([]byte, error) {
 			}
 		}
 	}
-
+	fmt.Println(string(m.Origin))
 	return json.Marshal(m)
-}
-
-func (m *Message) User() interface{} {
-	return m.Conn.Attach
 }

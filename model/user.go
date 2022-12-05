@@ -1,18 +1,13 @@
 package model
 
-import (
-	"hourglass-socket/socket"
-)
+import "time"
 
 type User struct {
-	ID     string          `json:"id"`
-	Avatar string          `json:"avatar"`
-	Name   string          `json:"name"`
-	Room   *Room           `json:"-"`
-	Conn   *socket.Connect `json:"-"`
-}
-
-func (u *User) Association(connect *socket.Connect) {
-	u.Conn = connect
-	connect.Attach = u
+	ID        int        `json:"id" gorm:"id"`
+	AliID     string     `json:"ali_id" gorm:"ali_id"`
+	Avatar    string     `json:"avatar" gorm:"avatar"`
+	Name      string     `json:"name" gorm:"name"`
+	Phone     string     `json:"phone" gorm:"phone"`
+	CreatedAt *time.Time `json:"created_at" gorm:"created_at"`
+	UpdatedAt *time.Time `json:"updated_at" gorm:"updated_at"`
 }
